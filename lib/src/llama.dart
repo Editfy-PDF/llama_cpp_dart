@@ -1,0 +1,554 @@
+import 'dart:io';
+import 'dart:convert';
+import 'package:llama_cpp_dart/bind/llama_binding.dart';
+import 'package:ffi/ffi.dart' as ffi;
+import 'dart:ffi';
+
+final DynamicLibrary _dylib = (){
+  if(Platform.isAndroid || Platform.isLinux){
+    return DynamicLibrary.open('src/build/bin/libllama.so');
+  } else if(Platform.isWindows){
+    return DynamicLibrary.open('llamalib.dll');
+  } else if(Platform.isIOS || Platform.isMacOS){
+    return DynamicLibrary.open('llamalib.dylib');
+  } else{
+    throw Exception('Platform not suported');
+  }
+}();
+final llamacpp _lib = llamacpp(_dylib);
+
+class LlamaModelParams{
+  static final LlamaModelParams _instance = LlamaModelParams._internal();
+  late llama_model_params _params;
+
+  factory LlamaModelParams() => _instance;
+
+  LlamaModelParams._internal(){
+    _params = _lib.llama_model_default_params();
+  }
+
+  llama_model_params getParams(){
+    return _params;
+  }
+
+  dynamic getParamByKey(String key){
+    switch(key){
+      case 'devices':
+        return _params.devices;
+      case 'tensor_buft_overrides':
+        return _params.tensor_buft_overrides;
+      case 'n_gpu_layers':
+        return _params.n_gpu_layers;
+      case 'split_mode':
+        return _params.split_mode;
+      case 'main_gpu':
+        return _params.main_gpu;
+      case 'tensor_split':
+        return _params.tensor_split;
+      case 'progress_callback':
+        return _params.progress_callback;
+      case 'progress_callback_user_data':
+        return _params.progress_callback_user_data;
+      case 'kv_overrides':
+        return _params.kv_overrides;
+      case 'vocab_only':
+        return _params.vocab_only;
+      case 'use_mmap':
+        return _params.use_mmap;
+      case 'use_mlock':
+        return _params.use_mlock;
+      case 'check_tensors':
+        return _params.check_tensors;
+      case 'use_extra_bfts':
+        return _params.use_extra_bufts;
+      default:
+        return null;
+    }
+  }
+
+  void setParam(String key, dynamic value){
+    switch(key){
+      case 'devices':
+        _params.devices = value;
+        break;
+      case 'tensor_buft_overrides':
+        _params.tensor_buft_overrides = value;
+        break;
+      case 'n_gpu_layers':
+        _params.n_gpu_layers = value;
+        break;
+      case 'split_mode':
+        return;
+      case 'main_gpu':
+        _params.main_gpu = value;
+        break;
+      case 'tensor_split':
+        _params.tensor_split = value;
+        break;
+      case 'progress_callback':
+        _params.progress_callback = value;
+        break;
+      case 'progress_callback_user_data':
+        _params.progress_callback_user_data = value;
+        break;
+      case 'kv_overrides':
+        _params.kv_overrides = value;
+        break;
+      case 'vocab_only':
+        _params.vocab_only = value;
+        break;
+      case 'use_mmap':
+        _params.use_mmap = value;
+        break;
+      case 'use_mlock':
+        _params.use_mlock = value;
+        break;
+      case 'check_tensors':
+        _params.check_tensors = value;
+        break;
+      case 'use_extra_bfts':
+        _params.use_extra_bufts = value;
+        break;
+      default:
+        return;
+    }
+  }
+}
+
+class LlamaCtxParams{
+  static final LlamaCtxParams _instance = LlamaCtxParams._internal();
+  late llama_context_params _params;
+
+  factory LlamaCtxParams() => _instance;
+
+  LlamaCtxParams._internal(){
+    _params = _lib.llama_context_default_params();
+  }
+
+  llama_context_params getParams(){
+    return _params;
+  }
+
+  dynamic getParamByKey(String key){
+    switch(key){
+      case 'n_ctx':
+        return _params.n_ctx;
+      case 'n_batch':
+        return _params.n_batch;
+      case 'n_ubatch':
+        return _params.n_ubatch;
+      case 'n_seq_max':
+        return _params.n_seq_max;
+      case 'n_threads':
+        return _params.n_threads;
+      case 'n_threads_batch':
+        return _params.n_threads_batch;
+      case 'rope_scaling_type':
+        return _params.rope_scaling_type;
+      case 'pooling_type':
+        return _params.pooling_type;
+      case 'attention_type':
+        return _params.attention_type;
+      case 'flash_attn_type':
+        return _params.flash_attn_type;
+      case 'rope_freq_base':
+        return _params.rope_freq_base;
+      case 'rope_freq_scale':
+        return _params.rope_freq_scale;
+      case 'yarn_ext_factor':
+        return _params.yarn_ext_factor;
+      case 'yarn_attn_factor':
+        return _params.yarn_attn_factor;
+      case 'yarn_beta_fast':
+        return _params.yarn_beta_fast;
+      case 'yarn_beta_slow':
+        return _params.yarn_beta_slow;
+      case 'yarn_orig_ctx':
+        return _params.yarn_orig_ctx;
+      case 'defrag_thold':
+        return _params.defrag_thold;
+      case 'cb_eval':
+        return _params.cb_eval;
+      case 'cb_eval_user_data':
+        return _params.cb_eval_user_data;
+      case 'type_k':
+        return _params.type_k;
+      case 'type_v':
+        return _params.type_v;
+      case 'abort_callback':
+        return _params.abort_callback;
+      case 'abort_callback_data':
+        return _params.abort_callback_data;
+      case 'embeddings':
+        return _params.embeddings;
+      case 'offload_kqv':
+        return _params.offload_kqv;
+      case 'no_perf':
+        return _params.no_perf;
+      case 'op_offload':
+        return _params.op_offload;
+      case 'swa_full':
+        return _params.swa_full;
+      case 'ku_unified':
+        return _params.kv_unified;
+      default:
+        return null;
+    }
+  }
+
+  void setParam(String key, dynamic value){
+    switch(key){
+      case 'n_ctx':
+        _params.n_ctx = value;
+        break;
+      case 'n_batch':
+        _params.n_batch = value;
+        break;
+      case 'n_ubatch':
+        _params.n_ubatch = value;
+        break;
+      case 'n_seq_max':
+        _params.n_seq_max = value;
+        break;
+      case 'n_threads':
+        _params.n_threads = value;
+        break;
+      case 'n_threads_batch':
+        _params.n_threads_batch = value;
+        break;
+      case 'rope_scaling_type':
+        return;
+      case 'pooling_type':
+        return;
+      case 'attention_type':
+        return;
+      case 'flash_attn_type':
+        return;
+      case 'rope_freq_base':
+        _params.rope_freq_base = value;
+        break;
+      case 'rope_freq_scale':
+        _params.rope_freq_scale = value;
+        break;
+      case 'yarn_ext_factor':
+        _params.yarn_ext_factor = value;
+        break;
+      case 'yarn_attn_factor':
+        _params.yarn_attn_factor = value;
+        break;
+      case 'yarn_beta_fast':
+        _params.yarn_beta_fast = value;
+        break;
+      case 'yarn_beta_slow':
+        _params.yarn_beta_slow = value;
+        break;
+      case 'yarn_orig_ctx':
+        _params.yarn_orig_ctx = value;
+        break;
+      case 'defrag_thold':
+        _params.defrag_thold = value;
+        break;
+      case 'cb_eval':
+        _params.cb_eval = value;
+        break;
+      case 'cb_eval_user_data':
+        _params.cb_eval_user_data = value;
+        break;
+      case 'type_k':
+        return;
+      case 'type_v':
+        return;
+      case 'abort_callback':
+        _params.abort_callback = value;
+        break;
+      case 'abort_callback_data':
+        _params.abort_callback_data = value;
+        break;
+      case 'embeddings':
+        _params.embeddings = value;
+        break;
+      case 'offload_kqv':
+        _params.offload_kqv = value;
+        break;
+      case 'no_perf':
+        _params.no_perf = value;
+        break;
+      case 'op_offload':
+        _params.op_offload = value;
+        break;
+      case 'swa_full':
+        _params.swa_full = value;
+        break;
+      case 'ku_unified':
+        _params.kv_unified = value;
+        break;
+      default:
+        return;
+    }
+  }
+}
+
+class Llama {
+  static final Llama _instance = Llama._internal();
+  late LlamaModelParams mParams;
+  late LlamaCtxParams cParams;
+  late llama_sampler_chain_params sParams;
+  late Pointer<llama_vocab> vocab;
+  late Pointer<llama_model> model = nullptr;
+  late Pointer<llama_context> ctx = nullptr;
+  late Pointer<llama_sampler> sampler = nullptr;
+  List<String> responce = [];
+
+  factory Llama() => _instance;
+
+  Llama._internal(){
+    _lib.llama_backend_init();
+
+    mParams = LlamaModelParams();
+    cParams = LlamaCtxParams();
+    sParams = _lib.llama_sampler_chain_default_params();
+  }
+
+  void dispose(){
+    stdout.write('dispose func: '); // debug
+    if(sampler != nullptr){
+      _lib.llama_sampler_free(sampler);
+      stdout.write('-> sampler'); // debug
+    }
+    if(ctx != nullptr){
+      _lib.llama_free(ctx);
+      stdout.write(' -> context'); // debug
+    }
+    if(model != nullptr){ 
+      _lib.llama_model_free(model);
+      stdout.write(' -> model'); // debug
+    }
+    _lib.llama_backend_free();
+    stdout.write(' -> backend\n'); // debug
+
+    stdout.write('done\n'); // debug
+  }
+
+  void test(String path, String prompt) async{
+    final res = await loadModel(path);
+    if(!res.$1) stdout.writeln(res.$2);
+
+    final txtPtr = prompt.toNativeUtf8();
+    final nextTokenPtr = ffi.malloc<llama_token>();
+
+    var tokCount = -_lib.llama_tokenize(vocab, txtPtr.cast<Char>(), txtPtr.length, nullptr, 0, true, true);
+    final tokenPt = ffi.malloc<llama_token>(tokCount);
+
+    if(_lib.llama_tokenize(vocab, txtPtr.cast<Char>(), txtPtr.length, tokenPt, tokCount, true, true) < 0){
+      stdout.writeln('falha na tokenização');
+    }
+
+    var batch = _lib.llama_batch_get_one(tokenPt, tokCount);
+
+    while(true){
+      if(_lib.llama_decode(ctx, batch) != 0){
+        stdout.writeln('Erro ao decodificar token');
+        break;
+      }
+
+      var nextToken = _lib.llama_sampler_sample(sampler, ctx, -1);
+      if(_lib.llama_vocab_is_eog(vocab, nextToken)) break;
+      nextTokenPtr.value = nextToken;
+
+      batch = _lib.llama_batch_get_one(nextTokenPtr, 1);
+
+      tokCount = -_lib.llama_token_to_piece(vocab, nextToken, nullptr, 0, 0, true);
+      var piecePtr = ffi.malloc<Uint8>(tokCount);
+
+      if(_lib.llama_token_to_piece(vocab, nextToken, piecePtr.cast<Char>(), tokCount, 0, true) < 0){
+        stdout.writeln('Erro ao converter o token');
+        break;
+      }
+
+      stdout.write(utf8.decode(piecePtr.asTypedList(tokCount), allowMalformed: true));
+    }
+    stdout.writeln();
+
+    //_lib.llama_batch_free(batch); Dá double free
+    ffi.malloc.free(nextTokenPtr);
+    ffi.malloc.free(tokenPt);
+    ffi.malloc.free(txtPtr);
+
+    dispose();
+  }
+
+  Future<(bool, String)> loadModel(String path) async{
+    final pathPtr = path.toNativeUtf8().cast<Char>();
+    model = _lib.llama_load_model_from_file(pathPtr, mParams.getParams());
+    ffi.malloc.free(pathPtr);
+    if(model == nullptr){
+      return (false, "Erro ao iniciar o modelo");
+    }
+
+    vocab = _lib.llama_model_get_vocab(model);
+
+    ctx = _lib.llama_init_from_model(model, cParams.getParams());
+    if(ctx == nullptr){
+      dispose();
+      return (false, "Erro ao iniciar o contexto");
+    }
+
+    sampler = _lib.llama_sampler_chain_init(sParams);
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_min_p(0.05, 1));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_temp(0.8));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    if(sampler == nullptr){
+      dispose();
+      return (false, 'Erro ao iniciar o sampler');
+    }
+    
+    return (true, "Modelo inicializado com sucesso");
+  }
+
+  (List<int>, String) _tokenize(String text){
+    final textPtr = text.toNativeUtf8();
+    final textLen = textPtr.length;
+
+    final  txtTokSize = -_lib.llama_tokenize(vocab, textPtr.cast<Char>(), textLen, nullptr, 0, true, true);
+    if(txtTokSize <= 0){
+      return ([], 'Erro ao computar quantidade de tokens para alocação');
+      //throw Exception('Erro ao computar quantidade de tokens para alocação');
+    }
+    Pointer<llama_token> buffer = ffi.malloc<llama_token>(txtTokSize); 
+
+    try {
+      final tokCount = _lib.llama_tokenize(
+        vocab,
+        textPtr.cast<Char>(),
+        textLen,
+        buffer,
+        txtTokSize,
+        true,
+        true,
+      );
+
+      if (tokCount <= 0) {
+        return ([], 'Erro ao gerar tokens');
+        //throw Exception("Erro ao gerar tokens");
+      }
+      if (tokCount > txtTokSize) {
+        return ([], 'Buffer insuficiente para tokens');
+        //throw Exception("Buffer insuficiente para tokens");
+      }
+
+      return (List<int>.generate(tokCount, (i) => buffer[i]), 'Sucesso');
+    } catch (e) {
+      throw Exception('Error: $e');
+    } finally {
+      ffi.malloc.free(textPtr);
+      ffi.malloc.free(buffer);
+    }
+  }
+
+  (int, String) _detokenize(List<int> tokens){
+    int pieceSize = 0;
+    final List<int> n = [];
+    for(int pos=0; pos<tokens.length; pos++){
+      n.add(-_lib.llama_token_to_piece(vocab, tokens[pos], nullptr, 0, 0, true));
+      if(n[pos] <= 0){
+        return (1, 'Erro ao computar o tamanho do piece');
+        //throw Exception('Erro ao computar o tamanho do piece');
+      }
+      pieceSize += n[pos];
+    }
+    print('pieceSize: $pieceSize'); // debug
+    if(pieceSize <= 0){
+      return (1, 'Erro ao computar a alocação do buffer de pieces');
+      //throw Exception('Erro ao computar a alocação do buffer de pieces');
+    }
+    Pointer<Uint8> buffer = ffi.malloc<Uint8>(pieceSize);
+    
+    try{
+      int offset = 0;
+      for(int pos=0; pos<tokens.length; pos++){
+        var wrote = _lib.llama_token_to_piece(
+          vocab,
+          tokens[pos],
+          buffer.cast<Char>() + offset,
+          n[pos],
+          0,
+          true
+        );
+
+        offset += wrote;
+      }
+      if(offset != pieceSize){
+        return (1, 'O valor de alocação ($pieceSize) é diferente do valor de computação ($offset)');
+        //throw Exception('O valor de alocação ($pieceSize) é diferente do valor de computação ($totalSize)');
+      }
+
+      final result = buffer.asTypedList(pieceSize);
+
+      return (0, utf8.decode(result, allowMalformed: true));
+    } catch(e){
+      throw Exception("Erro ao decodificar tokens -> $e");
+    } finally{
+      ffi.malloc.free(buffer);
+    }
+  }
+
+  Future<String> generate(String prompt) async{
+    List<int> acumulated = [];
+    
+    var tokList = _tokenize(prompt);
+    if(tokList.$1.isEmpty){
+      throw Exception('Erro em tokenize() -> ${tokList.$2}');
+    }
+
+    Pointer<llama_token> tokens = ffi.malloc<llama_token>(tokList.$1.length);
+    for(int i=0; i<tokList.$1.length; i++){
+        tokens[i] = tokList.$1[i];
+    }
+
+    llama_batch batch = _lib.llama_batch_get_one(tokens, tokList.$1.length);
+    var newToken = ffi.malloc<llama_token>();
+
+    try{
+      var nCtx = _lib.llama_n_ctx(ctx);
+
+      int i = 0;
+      while(i <= 256){
+        var nCtxUsed = _lib.llama_memory_seq_pos_max(_lib.llama_get_memory(ctx), 0) + 1;
+        print('nCtxUsed: $nCtxUsed'); // debug
+        if(nCtxUsed + batch.n_tokens > nCtx){
+          throw Exception('Tamanho do contexto excedido');
+        }
+
+        var ret = _lib.llama_decode(ctx, batch);
+        if(ret != 0){
+          throw Exception('Erro ao decodificar tokens');
+        }
+
+        var newTokenId = _lib.llama_sampler_sample(sampler, ctx, -1);
+
+        if(_lib.llama_vocab_is_eog(vocab, newTokenId)){
+          break;
+        }
+        newToken.value = newTokenId;
+
+        batch = _lib.llama_batch_get_one(newToken, 1);
+
+        acumulated.add(newTokenId);
+        
+        i++;
+      }
+
+      final result = _detokenize(acumulated);
+      if(result.$1 != 0){
+        throw Exception('Erro ao decodificar tokens para texto -> ${result.$2}');
+      }
+      return result.$2;
+    } catch(e){
+      throw Exception('Erro ao gerar a resposta: $e');
+    } finally{
+      ffi.malloc.free(tokens);
+      ffi.malloc.free(newToken);
+      //_lib.llama_batch_free(batch); // Dá erro ao liberar ctx
+    }
+  }
+}

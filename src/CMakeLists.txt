@@ -1,0 +1,23 @@
+cmake_minimum_required(VERSION 3.10)
+set(PROJECT_NAME "llamalib")
+project(${PROJECT_NAME} VERSION 0.0.1 LANGUAGES C)
+cmake_policy(VERSION 3.14...3.25)
+
+set(LLAMA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp)
+set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libs" FORCE)
+
+add_subdirectory(${LLAMA_DIR}) #${CMAKE_BINARY_DIR}/llama_build)
+#add_library(${PROJECT_NAME} SHARED )
+#target_include_directories(${PROJECT_NAME} PUBLIC ${LLAMA_DIR}/include)
+#target_compile_definitions(${PROJECT_NAME} PUBLIC DART_SHARED_LIB)
+#target_link_libraries(${PROJECT_NAME} PUBLIC llama)
+
+if (ANDROID)
+    target_link_options(${PROJECT_NAME} PRIVATE "-Wl,-z,max-page-size=16384")
+    set(GGML_OPENMP OFF CACHE BOOL "ggml: disable -march=native flag" FORCE)
+endif()
+
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" AND ANDROID)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DANDROID_ARM_NEON=TRUE -DANDROID_TOOLCHAIN=clang -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-23")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DANDROID_ARM_NEON=TRUE -DANDROID_TOOLCHAIN=clang -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-23")
+endif()
