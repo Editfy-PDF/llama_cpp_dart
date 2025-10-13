@@ -18,13 +18,30 @@ final DynamicLibrary _dylib = (){
 final llamacpp _lib = llamacpp(_dylib);
 
 class LlamaModelParams{
-  static final LlamaModelParams _instance = LlamaModelParams._internal();
   late llama_model_params _params;
 
-  factory LlamaModelParams() => _instance;
-
-  LlamaModelParams._internal(){
+  LlamaModelParams({
+    // number of layers to store in VRAM
+    int? nGpuLayers,
+    // only load the vocabulary, no weights
+    bool? vocabOnly,
+    // use mmap if possible
+    bool? useMmap,
+    // orce system to keep model in RAM
+    bool? useMlock,
+    // validate model tensor data
+    bool? checkTensors,
+    // use extra buffer types (used for weight repacking)
+    bool? useExtraBufts
+  }){
     _params = _lib.llama_model_default_params();
+
+    if(nGpuLayers != null) _params.n_gpu_layers = nGpuLayers;
+    if(vocabOnly != null) _params.vocab_only = vocabOnly;
+    if(useMmap != null) _params.use_mmap = useMmap;
+    if(useMlock != null) _params.use_mlock = useMlock;
+    if(checkTensors != null) _params.check_tensors = checkTensors;
+    if(useExtraBufts != null) _params.use_extra_bufts = useExtraBufts;
   }
 
   llama_model_params getParams(){
@@ -116,13 +133,81 @@ class LlamaModelParams{
 }
 
 class LlamaCtxParams{
-  static final LlamaCtxParams _instance = LlamaCtxParams._internal();
   late llama_context_params _params;
 
-  factory LlamaCtxParams() => _instance;
-
-  LlamaCtxParams._internal(){
+  LlamaCtxParams({
+    // text context, 0 = from model
+    int? nCtx,
+    // logical maximum batch size that can be submitted to llama_decode
+    int? nBatch,
+    // physical maximum batch size
+    int? nUbatch,
+    // max number of sequences
+    int? nSeqMax,
+    // number of threads to use for generation
+    int? nThreads,
+    // number of threads to use for batch processing
+    int? nThreadsbatch,
+    // RoPE base frequency, 0 = from model
+    double? ropeFreqBase,
+    // RoPE frequency scaling factor, 0 = from model
+    double? ropeFreqScale,
+    // YaRN extrapolation mix factor, negative = from model
+    double? yarnExtFactor,
+    // YaRN magnitude scaling factor
+    double? yarnAttnFactor,
+    // YaRN low correction dim
+    double? yarnBetaFast,
+    // YaRN high correction dim
+    double? yarnBetaSlow,
+    // YaRN original context size
+    int? yarnOrigCtx,
+    // if true, extract embeddings (together with logits)
+    bool? embeddings,
+    // offload the KQV ops (including the KV cache) to GPU
+    bool? offloadKqv,
+    // measure performance timings
+    bool? noPerf,
+    // offload host tensor operations to device
+    bool? opOffload,
+    // use full-size SWA cache.
+    // NOTE: setting to false when n_seq_max > 1 can cause bad performance in some cases
+    bool? swaFull,
+    // use a unified buffer across the input sequences when computing the attention
+    // try to disable when n_seq_max > 1 for improved performance when the sequences do not share a large prefix
+    bool? kvUnified
+  }){
     _params = _lib.llama_context_default_params();
+
+    if(nCtx == null) _params.n_ctx = nCtx!;
+    if(nBatch == null) _params.n_batch = nBatch!;
+    if(nUbatch == null) _params.n_ubatch = nUbatch!;
+    if(nSeqMax == null) _params.n_seq_max = nSeqMax!;
+    if(nThreads == null){
+      _params.n_threads = nThreads!;
+    } else{
+      final int nCores = Platform.numberOfProcessors;
+      _params.n_threads = (nCores / 2) > 1 ? (nCores/2).toInt() : 1;
+    }
+    if(nThreadsbatch == null){
+      _params.n_threads_batch = nThreadsbatch!;
+    } else{
+      final int nCores = Platform.numberOfProcessors;
+      _params.n_threads = (nCores / 2) > 1 ? (nCores/2).toInt() : 1;
+    }
+    if(ropeFreqBase != null) _params.rope_freq_base = ropeFreqBase;
+    if(ropeFreqScale != null) _params.rope_freq_scale = ropeFreqScale;
+    if(yarnExtFactor != null) _params.yarn_ext_factor = yarnExtFactor;
+    if(yarnAttnFactor != null) _params.yarn_attn_factor = yarnAttnFactor;
+    if(yarnBetaFast != null) _params.yarn_beta_fast = yarnBetaFast;
+    if(yarnBetaSlow != null) _params.yarn_beta_slow = yarnBetaSlow;
+    if(yarnOrigCtx != null) _params.yarn_orig_ctx = yarnOrigCtx;
+    if(embeddings != null) _params.embeddings = embeddings;
+    if(offloadKqv != null) _params.offload_kqv = offloadKqv;
+    if(noPerf != null) _params.no_perf = noPerf;
+    if(opOffload != null) _params.op_offload = opOffload;
+    if(swaFull != null) _params.swa_full = swaFull;
+    if(kvUnified != null) _params.kv_unified = kvUnified;
   }
 
   llama_context_params getParams(){
@@ -299,7 +384,15 @@ class Llama {
   late Pointer<llama_sampler> sampler = nullptr;
   List<String> responce = [];
 
-  factory Llama() => _instance;
+  factory Llama({
+    LlamaModelParams? mParams,
+    LlamaCtxParams? cParams
+  }){
+    if(mParams != null) _instance.mParams = mParams;
+    if(cParams != null) _instance.cParams = cParams;
+
+    return _instance;
+  }
 
   Llama._internal(){
     _lib.llama_backend_init();
