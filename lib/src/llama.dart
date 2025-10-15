@@ -6,7 +6,7 @@ import 'dart:ffi';
 
 final DynamicLibrary _dylib = (){
   if(Platform.isAndroid || Platform.isLinux){
-    return DynamicLibrary.open('src/build/bin/libllama.so');
+    return DynamicLibrary.open('libllama.so');
   } else if(Platform.isWindows){
     return DynamicLibrary.open('llamalib.dll');
   } else if(Platform.isIOS || Platform.isMacOS){
@@ -27,7 +27,7 @@ class LlamaModelParams{
     bool? vocabOnly,
     // use mmap if possible
     bool? useMmap,
-    // orce system to keep model in RAM
+    // force system to keep model in RAM
     bool? useMlock,
     // validate model tensor data
     bool? checkTensors,
@@ -179,18 +179,18 @@ class LlamaCtxParams{
   }){
     _params = _lib.llama_context_default_params();
 
-    if(nCtx == null) _params.n_ctx = nCtx!;
-    if(nBatch == null) _params.n_batch = nBatch!;
-    if(nUbatch == null) _params.n_ubatch = nUbatch!;
-    if(nSeqMax == null) _params.n_seq_max = nSeqMax!;
-    if(nThreads == null){
-      _params.n_threads = nThreads!;
+    if(nCtx != null) _params.n_ctx = nCtx;
+    if(nBatch != null) _params.n_batch = nBatch;
+    if(nUbatch != null) _params.n_ubatch = nUbatch;
+    if(nSeqMax != null) _params.n_seq_max = nSeqMax;
+    if(nThreads != null){
+      _params.n_threads = nThreads;
     } else{
       final int nCores = Platform.numberOfProcessors;
       _params.n_threads = (nCores / 2) > 1 ? (nCores/2).toInt() : 1;
     }
-    if(nThreadsbatch == null){
-      _params.n_threads_batch = nThreadsbatch!;
+    if(nThreadsbatch != null){
+      _params.n_threads_batch = nThreadsbatch;
     } else{
       final int nCores = Platform.numberOfProcessors;
       _params.n_threads = (nCores / 2) > 1 ? (nCores/2).toInt() : 1;
@@ -403,23 +403,13 @@ class Llama {
   }
 
   void dispose(){
-    stdout.write('dispose func: '); // debug
-    if(sampler != nullptr){
-      _lib.llama_sampler_free(sampler);
-      stdout.write('-> sampler'); // debug
-    }
     if(ctx != nullptr){
       _lib.llama_free(ctx);
-      stdout.write(' -> context'); // debug
     }
     if(model != nullptr){ 
       _lib.llama_model_free(model);
-      stdout.write(' -> model'); // debug
     }
     _lib.llama_backend_free();
-    stdout.write(' -> backend\n'); // debug
-
-    stdout.write('done\n'); // debug
   }
 
   void test(String path, String prompt) async{
@@ -486,26 +476,16 @@ class Llama {
       return (false, "Erro ao iniciar o contexto");
     }
 
-    sampler = _lib.llama_sampler_chain_init(sParams);
-    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_min_p(0.05, 1));
-    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_temp(0.8));
-    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
-    if(sampler == nullptr){
-      dispose();
-      return (false, 'Erro ao iniciar o sampler');
-    }
-    
     return (true, "Modelo inicializado com sucesso");
   }
 
-  (List<int>, String) _tokenize(String text){
+  (List<int>, String) tokenize(String text){
     final textPtr = text.toNativeUtf8();
     final textLen = textPtr.length;
 
     final  txtTokSize = -_lib.llama_tokenize(vocab, textPtr.cast<Char>(), textLen, nullptr, 0, true, true);
     if(txtTokSize <= 0){
       return ([], 'Erro ao computar quantidade de tokens para alocação');
-      //throw Exception('Erro ao computar quantidade de tokens para alocação');
     }
     Pointer<llama_token> buffer = ffi.malloc<llama_token>(txtTokSize); 
 
@@ -522,11 +502,9 @@ class Llama {
 
       if (tokCount <= 0) {
         return ([], 'Erro ao gerar tokens');
-        //throw Exception("Erro ao gerar tokens");
       }
       if (tokCount > txtTokSize) {
         return ([], 'Buffer insuficiente para tokens');
-        //throw Exception("Buffer insuficiente para tokens");
       }
 
       return (List<int>.generate(tokCount, (i) => buffer[i]), 'Sucesso');
@@ -545,14 +523,12 @@ class Llama {
       n.add(-_lib.llama_token_to_piece(vocab, tokens[pos], nullptr, 0, 0, true));
       if(n[pos] <= 0){
         return (1, 'Erro ao computar o tamanho do piece');
-        //throw Exception('Erro ao computar o tamanho do piece');
       }
       pieceSize += n[pos];
     }
     print('pieceSize: $pieceSize'); // debug
     if(pieceSize <= 0){
       return (1, 'Erro ao computar a alocação do buffer de pieces');
-      //throw Exception('Erro ao computar a alocação do buffer de pieces');
     }
     Pointer<Uint8> buffer = ffi.malloc<Uint8>(pieceSize);
     
@@ -572,7 +548,6 @@ class Llama {
       }
       if(offset != pieceSize){
         return (1, 'O valor de alocação ($pieceSize) é diferente do valor de computação ($offset)');
-        //throw Exception('O valor de alocação ($pieceSize) é diferente do valor de computação ($totalSize)');
       }
 
       final result = buffer.asTypedList(pieceSize);
@@ -585,10 +560,31 @@ class Llama {
     }
   }
 
-  Future<String> generate(String prompt) async{
+  Future<String> generate(
+    String prompt, {
+    int nPredict=256,
+    double temp=0.8,
+    int topK=40,
+    double topP=0.95,
+    double minP=0.0,
+    double penaltyRepeat=1.1,
+    double penaltyFreq=0,
+    double penaltyPresent=0
+  }) async{
+    sampler = _lib.llama_sampler_chain_init(sParams);
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_temp(temp));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_top_k(topK));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_top_p(topP, 1));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_min_p(minP, 1));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_penalties(64, penaltyRepeat, penaltyFreq, penaltyPresent));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    if(sampler == nullptr){
+      throw Exception('Erro ao iniciar o sampler');
+    }
+
     List<int> acumulated = [];
     
-    var tokList = _tokenize(prompt);
+    var tokList = tokenize(prompt);
     if(tokList.$1.isEmpty){
       throw Exception('Erro em tokenize() -> ${tokList.$2}');
     }
@@ -605,9 +601,8 @@ class Llama {
       var nCtx = _lib.llama_n_ctx(ctx);
 
       int i = 0;
-      while(i <= 256){
+      while(i <= nPredict){
         var nCtxUsed = _lib.llama_memory_seq_pos_max(_lib.llama_get_memory(ctx), 0) + 1;
-        print('nCtxUsed: $nCtxUsed'); // debug
         if(nCtxUsed + batch.n_tokens > nCtx){
           throw Exception('Tamanho do contexto excedido');
         }
@@ -641,7 +636,7 @@ class Llama {
     } finally{
       ffi.malloc.free(tokens);
       ffi.malloc.free(newToken);
-      //_lib.llama_batch_free(batch); // Dá erro ao liberar ctx
+      _lib.llama_sampler_free(sampler);
     }
   }
 }
