@@ -412,52 +412,73 @@ class Llama {
     _lib.llama_backend_free();
   }
 
-  void test(String path, String prompt) async{
-    final res = await loadModel(path);
-    if(!res.$1) stdout.writeln(res.$2);
+  Stream<String> generateStreamed(String prompt, {
+    int nPredict=256,
+    double temp=0.8,
+    int topK=40,
+    double topP=0.95,
+    double minP=0.0,
+    double penaltyRepeat=1.1,
+    double penaltyFreq=0,
+    double penaltyPresent=0
+  }) async*{
+    sampler = _lib.llama_sampler_chain_init(sParams);
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_temp(temp));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_top_k(topK));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_top_p(topP, 1));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_min_p(minP, 1));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_penalties(64, penaltyRepeat, penaltyFreq, penaltyPresent));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    if(sampler == nullptr){
+      throw Exception('Erro ao iniciar o sampler');
+    }
 
-    final txtPtr = prompt.toNativeUtf8();
+    final tokenList = tokenize(prompt);
+    if(tokenList.$1.isEmpty){
+      throw Exception('Erro em tokenize() -> ${tokenList.$2}');
+    }
+
+    Pointer<llama_token> tokens = ffi.malloc<llama_token>(tokenList.$1.length);
+    for(int i=0; i<tokenList.$1.length; i++){
+        tokens[i] = tokenList.$1[i];
+    }
+
+    var batch = _lib.llama_batch_get_one(tokens, tokenList.$1.length);
     final nextTokenPtr = ffi.malloc<llama_token>();
+    final nCtx = _lib.llama_n_ctx(ctx);
+    
+    try{
+      int i = 0;
+      while(i < nPredict){
+        final nCtxUsed = _lib.llama_memory_seq_pos_max(_lib.llama_get_memory(ctx), 0) + 1;
+        if(nCtxUsed + batch.n_tokens > nCtx){
+          throw Exception('Tamanho do contexto excedido');
+        }
 
-    var tokCount = -_lib.llama_tokenize(vocab, txtPtr.cast<Char>(), txtPtr.length, nullptr, 0, true, true);
-    final tokenPt = ffi.malloc<llama_token>(tokCount);
+        if(_lib.llama_decode(ctx, batch) != 0){
+          throw Exception('Erro ao decodificar token');
+        }
 
-    if(_lib.llama_tokenize(vocab, txtPtr.cast<Char>(), txtPtr.length, tokenPt, tokCount, true, true) < 0){
-      stdout.writeln('falha na tokenização');
-    }
+        final nextToken = _lib.llama_sampler_sample(sampler, ctx, -1);
+        if(_lib.llama_vocab_is_eog(vocab, nextToken)) break;
+        nextTokenPtr.value = nextToken;
 
-    var batch = _lib.llama_batch_get_one(tokenPt, tokCount);
+        batch = _lib.llama_batch_get_one(nextTokenPtr, 1);
 
-    while(true){
-      if(_lib.llama_decode(ctx, batch) != 0){
-        stdout.writeln('Erro ao decodificar token');
-        break;
+        final result = _detokenize(List.filled(1, nextToken, growable: false));
+        if(result.$1 == 0){
+          yield result.$2;
+        } else{
+          break;
+        }
       }
-
-      var nextToken = _lib.llama_sampler_sample(sampler, ctx, -1);
-      if(_lib.llama_vocab_is_eog(vocab, nextToken)) break;
-      nextTokenPtr.value = nextToken;
-
-      batch = _lib.llama_batch_get_one(nextTokenPtr, 1);
-
-      tokCount = -_lib.llama_token_to_piece(vocab, nextToken, nullptr, 0, 0, true);
-      var piecePtr = ffi.malloc<Uint8>(tokCount);
-
-      if(_lib.llama_token_to_piece(vocab, nextToken, piecePtr.cast<Char>(), tokCount, 0, true) < 0){
-        stdout.writeln('Erro ao converter o token');
-        break;
-      }
-
-      stdout.write(utf8.decode(piecePtr.asTypedList(tokCount), allowMalformed: true));
+    } catch(e){
+      throw Exception('Erro ao gerar a resposta: $e');
+    }finally{
+      ffi.malloc.free(tokens);
+      ffi.malloc.free(nextTokenPtr);
+      _lib.llama_sampler_free(sampler);
     }
-    stdout.writeln();
-
-    //_lib.llama_batch_free(batch); Dá double free
-    ffi.malloc.free(nextTokenPtr);
-    ffi.malloc.free(tokenPt);
-    ffi.malloc.free(txtPtr);
-
-    dispose();
   }
 
   Future<(bool, String)> loadModel(String path) async{
@@ -483,7 +504,7 @@ class Llama {
     final textPtr = text.toNativeUtf8();
     final textLen = textPtr.length;
 
-    final  txtTokSize = -_lib.llama_tokenize(vocab, textPtr.cast<Char>(), textLen, nullptr, 0, true, true);
+    final txtTokSize = -_lib.llama_tokenize(vocab, textPtr.cast<Char>(), textLen, nullptr, 0, true, true);
     if(txtTokSize <= 0){
       return ([], 'Erro ao computar quantidade de tokens para alocação');
     }
@@ -526,7 +547,6 @@ class Llama {
       }
       pieceSize += n[pos];
     }
-    print('pieceSize: $pieceSize'); // debug
     if(pieceSize <= 0){
       return (1, 'Erro ao computar a alocação do buffer de pieces');
     }
@@ -584,7 +604,7 @@ class Llama {
 
     List<int> acumulated = [];
     
-    var tokList = tokenize(prompt);
+    final tokList = tokenize(prompt);
     if(tokList.$1.isEmpty){
       throw Exception('Erro em tokenize() -> ${tokList.$2}');
     }
@@ -595,28 +615,25 @@ class Llama {
     }
 
     llama_batch batch = _lib.llama_batch_get_one(tokens, tokList.$1.length);
-    var newToken = ffi.malloc<llama_token>();
+    final newToken = ffi.malloc<llama_token>();
 
     try{
-      var nCtx = _lib.llama_n_ctx(ctx);
+      final nCtx = _lib.llama_n_ctx(ctx);
 
       int i = 0;
       while(i <= nPredict){
-        var nCtxUsed = _lib.llama_memory_seq_pos_max(_lib.llama_get_memory(ctx), 0) + 1;
+        final nCtxUsed = _lib.llama_memory_seq_pos_max(_lib.llama_get_memory(ctx), 0) + 1;
         if(nCtxUsed + batch.n_tokens > nCtx){
           throw Exception('Tamanho do contexto excedido');
         }
 
-        var ret = _lib.llama_decode(ctx, batch);
+        final ret = _lib.llama_decode(ctx, batch);
         if(ret != 0){
           throw Exception('Erro ao decodificar tokens');
         }
 
-        var newTokenId = _lib.llama_sampler_sample(sampler, ctx, -1);
-
-        if(_lib.llama_vocab_is_eog(vocab, newTokenId)){
-          break;
-        }
+        final newTokenId = _lib.llama_sampler_sample(sampler, ctx, -1);
+        if(_lib.llama_vocab_is_eog(vocab, newTokenId)) break;
         newToken.value = newTokenId;
 
         batch = _lib.llama_batch_get_one(newToken, 1);
