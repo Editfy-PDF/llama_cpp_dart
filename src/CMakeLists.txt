@@ -4,6 +4,12 @@ project(${PROJECT_NAME} VERSION 0.0.1 LANGUAGES C)
 cmake_policy(VERSION 3.14...3.25)
 
 set(LLAMA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp)
+
+if(NOT EXISTS ${LLAMA_DIR})
+  message(STATUS "Downloading llama.cpp...")
+  execute_process(COMMAND git clone --recursive https://github.com/ggml-org/llama.cpp ${CMAKE_SOURCE_DIR})
+endif()
+
 set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libs" FORCE)
 
 if(ANDROID)
