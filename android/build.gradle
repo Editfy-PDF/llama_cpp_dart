@@ -27,7 +27,7 @@ apply plugin: "kotlin-android"
 android {
     namespace = "com.example.llama_cpp_dart"
 
-    compileSdk = 35
+    compileSdk = 36
 
     externalNativeBuild {
         cmake {
@@ -50,7 +50,7 @@ android {
     }
 
     defaultConfig {
-        minSdk = 23
+        minSdk = 28
     }
 
     dependencies {

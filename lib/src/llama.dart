@@ -4,15 +4,22 @@ import 'package:llama_cpp_dart/bind/llama_binding.dart';
 import 'package:ffi/ffi.dart' as ffi;
 import 'dart:ffi';
 
-final DynamicLibrary _dylib = (){
+String libPath = (){
   if(Platform.isAndroid || Platform.isLinux){
-    return DynamicLibrary.open('libllama.so');
-  } else if(Platform.isWindows){
-    return DynamicLibrary.open('llamalib.dll');
+    return 'libllama.so';
   } else if(Platform.isIOS || Platform.isMacOS){
-    return DynamicLibrary.open('llamalib.dylib');
+    return 'llamalib.dylib';
   } else{
-    throw Exception('Platform not suported');
+    return 'llamalib.dll';
+  }
+}();
+
+final DynamicLibrary _dylib = (){
+  try {
+    return DynamicLibrary.open(libPath);
+  }
+  catch(e){
+    throw Exception('Plataforma não suportada ou biblioteca dinâmica corrompida');
   }
 }();
 final llamacpp _lib = llamacpp(_dylib);
@@ -412,6 +419,29 @@ class Llama {
     _lib.llama_backend_free();
   }
 
+  Future<(bool, String)> loadModel(String path) async{
+    final pathPtr = path.toNativeUtf8().cast<Char>();
+    model = _lib.llama_model_load_from_file(pathPtr, mParams.getParams());
+    ffi.malloc.free(pathPtr);
+    if(model == nullptr){
+      return (false, "Erro ao iniciar o modelo");
+    }
+
+    vocab = _lib.llama_model_get_vocab(model);
+    if(vocab == nullptr){
+      dispose();
+      return (false, "Erro ao inicializar o vocab");
+    }
+
+    ctx = _lib.llama_init_from_model(model, cParams.getParams());
+    if(ctx == nullptr){
+      dispose();
+      return (false, "Erro ao iniciar o contexto");
+    }
+
+    return (true, "Modelo inicializado com sucesso");
+  }
+
   Stream<String> generateStreamed(String prompt, {
     int nPredict=256,
     double temp=0.8,
@@ -481,23 +511,81 @@ class Llama {
     }
   }
 
-  Future<(bool, String)> loadModel(String path) async{
-    final pathPtr = path.toNativeUtf8().cast<Char>();
-    model = _lib.llama_load_model_from_file(pathPtr, mParams.getParams());
-    ffi.malloc.free(pathPtr);
-    if(model == nullptr){
-      return (false, "Erro ao iniciar o modelo");
+  Future<String> generate(
+    String prompt, {
+    int nPredict=256,
+    double temp=0.8,
+    int topK=40,
+    double topP=0.95,
+    double minP=0.0,
+    double penaltyRepeat=1.1,
+    double penaltyFreq=0,
+    double penaltyPresent=0
+  }) async{
+    sampler = _lib.llama_sampler_chain_init(sParams);
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_temp(temp));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_top_k(topK));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_top_p(topP, 1));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_min_p(minP, 1));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_penalties(64, penaltyRepeat, penaltyFreq, penaltyPresent));
+    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    if(sampler == nullptr){
+      throw Exception('Erro ao iniciar o sampler');
     }
 
-    vocab = _lib.llama_model_get_vocab(model);
-
-    ctx = _lib.llama_init_from_model(model, cParams.getParams());
-    if(ctx == nullptr){
-      dispose();
-      return (false, "Erro ao iniciar o contexto");
+    List<int> acumulated = [];
+    
+    final tokList = tokenize(prompt);
+    if(tokList.$1.isEmpty){
+      throw Exception('Erro em tokenize() -> ${tokList.$2}');
     }
 
-    return (true, "Modelo inicializado com sucesso");
+    Pointer<llama_token> tokens = ffi.malloc<llama_token>(tokList.$1.length);
+    for(int i=0; i<tokList.$1.length; i++){
+        tokens[i] = tokList.$1[i];
+    }
+
+    llama_batch batch = _lib.llama_batch_get_one(tokens, tokList.$1.length);
+    final newToken = ffi.malloc<llama_token>();
+
+    try{
+      final nCtx = _lib.llama_n_ctx(ctx);
+
+      int i = 0;
+      while(i <= nPredict){
+        final nCtxUsed = _lib.llama_memory_seq_pos_max(_lib.llama_get_memory(ctx), 0) + 1;
+        if(nCtxUsed + batch.n_tokens > nCtx){
+          throw Exception('Tamanho do contexto excedido');
+        }
+
+        final ret = _lib.llama_decode(ctx, batch);
+        if(ret != 0){
+          throw Exception('Erro ao decodificar tokens');
+        }
+
+        final newTokenId = _lib.llama_sampler_sample(sampler, ctx, -1);
+        if(_lib.llama_vocab_is_eog(vocab, newTokenId)) break;
+        newToken.value = newTokenId;
+
+        batch = _lib.llama_batch_get_one(newToken, 1);
+
+        acumulated.add(newTokenId);
+        
+        i++;
+      }
+
+      final result = _detokenize(acumulated);
+      if(result.$1 != 0){
+        throw Exception('Erro ao decodificar tokens para texto -> ${result.$2}');
+      }
+      return result.$2;
+    } catch(e){
+      throw Exception('Erro ao gerar a resposta: $e');
+    } finally{
+      ffi.malloc.free(tokens);
+      ffi.malloc.free(newToken);
+      _lib.llama_sampler_free(sampler);
+    }
   }
 
   (List<int>, String) tokenize(String text){
@@ -577,83 +665,6 @@ class Llama {
       throw Exception("Erro ao decodificar tokens -> $e");
     } finally{
       ffi.malloc.free(buffer);
-    }
-  }
-
-  Future<String> generate(
-    String prompt, {
-    int nPredict=256,
-    double temp=0.8,
-    int topK=40,
-    double topP=0.95,
-    double minP=0.0,
-    double penaltyRepeat=1.1,
-    double penaltyFreq=0,
-    double penaltyPresent=0
-  }) async{
-    sampler = _lib.llama_sampler_chain_init(sParams);
-    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_temp(temp));
-    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_top_k(topK));
-    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_top_p(topP, 1));
-    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_min_p(minP, 1));
-    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_penalties(64, penaltyRepeat, penaltyFreq, penaltyPresent));
-    _lib.llama_sampler_chain_add(sampler, _lib.llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
-    if(sampler == nullptr){
-      throw Exception('Erro ao iniciar o sampler');
-    }
-
-    List<int> acumulated = [];
-    
-    final tokList = tokenize(prompt);
-    if(tokList.$1.isEmpty){
-      throw Exception('Erro em tokenize() -> ${tokList.$2}');
-    }
-
-    Pointer<llama_token> tokens = ffi.malloc<llama_token>(tokList.$1.length);
-    for(int i=0; i<tokList.$1.length; i++){
-        tokens[i] = tokList.$1[i];
-    }
-
-    llama_batch batch = _lib.llama_batch_get_one(tokens, tokList.$1.length);
-    final newToken = ffi.malloc<llama_token>();
-
-    try{
-      final nCtx = _lib.llama_n_ctx(ctx);
-
-      int i = 0;
-      while(i <= nPredict){
-        final nCtxUsed = _lib.llama_memory_seq_pos_max(_lib.llama_get_memory(ctx), 0) + 1;
-        if(nCtxUsed + batch.n_tokens > nCtx){
-          throw Exception('Tamanho do contexto excedido');
-        }
-
-        final ret = _lib.llama_decode(ctx, batch);
-        if(ret != 0){
-          throw Exception('Erro ao decodificar tokens');
-        }
-
-        final newTokenId = _lib.llama_sampler_sample(sampler, ctx, -1);
-        if(_lib.llama_vocab_is_eog(vocab, newTokenId)) break;
-        newToken.value = newTokenId;
-
-        batch = _lib.llama_batch_get_one(newToken, 1);
-
-        acumulated.add(newTokenId);
-        
-        i++;
-      }
-
-      final result = _detokenize(acumulated);
-      if(result.$1 != 0){
-        throw Exception('Erro ao decodificar tokens para texto -> ${result.$2}');
-      }
-      return result.$2;
-    } catch(e){
-      throw Exception('Erro ao gerar a resposta: $e');
-    } finally{
-      ffi.malloc.free(tokens);
-      ffi.malloc.free(newToken);
-      _lib.llama_sampler_free(sampler);
     }
   }
 }
