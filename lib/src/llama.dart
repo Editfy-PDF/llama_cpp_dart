@@ -390,6 +390,7 @@ class Llama {
   late Pointer<llama_context> ctx = nullptr;
   late Pointer<llama_sampler> sampler = nullptr;
   List<String> responce = [];
+  bool stopProcess = false;
 
   factory Llama({
     LlamaModelParams? mParams,
@@ -442,6 +443,10 @@ class Llama {
     return (true, "Modelo inicializado com sucesso");
   }
 
+  void sendStop(){
+    stopProcess = true;
+  }
+
   Stream<String> generateStreamed(String prompt, {
     int nPredict=256,
     double temp=0.8,
@@ -479,7 +484,7 @@ class Llama {
     
     try{
       int i = 0;
-      while(i < nPredict){
+      while(i < nPredict && !stopProcess){
         final nCtxUsed = _lib.llama_memory_seq_pos_max(_lib.llama_get_memory(ctx), 0) + 1;
         if(nCtxUsed + batch.n_tokens > nCtx){
           throw Exception('Tamanho do contexto excedido');
@@ -505,6 +510,7 @@ class Llama {
     } catch(e){
       throw Exception('Erro ao gerar a resposta: $e');
     }finally{
+      stopProcess = false;
       ffi.malloc.free(tokens);
       ffi.malloc.free(nextTokenPtr);
       _lib.llama_sampler_free(sampler);
@@ -552,7 +558,7 @@ class Llama {
       final nCtx = _lib.llama_n_ctx(ctx);
 
       int i = 0;
-      while(i <= nPredict){
+      while(i <= nPredict && !stopProcess){
         final nCtxUsed = _lib.llama_memory_seq_pos_max(_lib.llama_get_memory(ctx), 0) + 1;
         if(nCtxUsed + batch.n_tokens > nCtx){
           throw Exception('Tamanho do contexto excedido');
@@ -582,6 +588,7 @@ class Llama {
     } catch(e){
       throw Exception('Erro ao gerar a resposta: $e');
     } finally{
+      stopProcess = false;
       ffi.malloc.free(tokens);
       ffi.malloc.free(newToken);
       _lib.llama_sampler_free(sampler);
