@@ -519,6 +519,7 @@ class Llama {
 
   Future<String> generate(
     String prompt, {
+    bool isIsolated=false,
     int nPredict=256,
     double temp=0.8,
     int topK=40,
@@ -578,6 +579,8 @@ class Llama {
         acumulated.add(newTokenId);
         
         i++;
+
+        if(isIsolated) await Future.delayed(Duration.zero);
       }
 
       final result = _detokenize(acumulated);
