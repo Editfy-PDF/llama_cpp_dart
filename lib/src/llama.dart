@@ -193,14 +193,12 @@ class LlamaCtxParams{
     if(nThreads != null){
       _params.n_threads = nThreads;
     } else{
-      final int nCores = Platform.numberOfProcessors;
-      _params.n_threads = (nCores / 2) > 1 ? (nCores/2).toInt() : 1;
+      _params.n_threads = Platform.numberOfProcessors;
     }
     if(nThreadsbatch != null){
       _params.n_threads_batch = nThreadsbatch;
     } else{
-      final int nCores = Platform.numberOfProcessors;
-      _params.n_threads = (nCores / 2) > 1 ? (nCores/2).toInt() : 1;
+      _params.n_threads = Platform.numberOfProcessors;
     }
     if(ropeFreqBase != null) _params.rope_freq_base = ropeFreqBase;
     if(ropeFreqScale != null) _params.rope_freq_scale = ropeFreqScale;
