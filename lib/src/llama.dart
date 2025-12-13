@@ -596,61 +596,106 @@ class Llama {
     }
   }
 
-  String formatWithTemplate(dynamic prompt){
+  String formatWithTemplate(dynamic prompt) {
     if(prompt is List<Map<String, String>> && prompt.isNotEmpty){
-      final size = sizeOf<llama_chat_message>();
-      final messages = ffi.malloc<llama_chat_message>(prompt.length * size);
-      var offset = 0;
-      for(final msg in prompt){
-        messages[offset] = ffi.malloc<llama_chat_message>().ref;
-        messages[offset].role = msg['role']!.toNativeUtf8().cast<Char>();
-        messages[offset].content = msg['content']!.toNativeUtf8().cast<Char>();    
+      final messages = ffi.malloc<llama_chat_message>(prompt.length);
 
-        offset += size;
+      try{
+        for(var i = 0; i < prompt.length; i++){
+          final msg = prompt[i];
+          if (msg['role'] == null || msg['content'] == null) {
+            throw Exception('Mensagem inválida: role/content ausente');
+          }
+
+          messages[i].role = msg['role']!.toNativeUtf8().cast<Char>();
+          messages[i].content = msg['content']!.toNativeUtf8().cast<Char>();
+        }
+
+        final blen = _lib.llama_chat_apply_template(
+          nullptr,
+          messages,
+          prompt.length,
+          false,
+          nullptr,
+          0,
+        );
+
+        if(blen <= 0) throw Exception('Falha ao calcular tamanho do prompt');
+
+        final buffer = ffi.malloc<Char>(blen);
+
+        try {
+          final res = _lib.llama_chat_apply_template(
+            nullptr,
+            messages,
+            prompt.length,
+            false,
+            buffer,
+            blen,
+          );
+
+          if (res != blen) throw Exception('Erro ao aplicar template');
+
+          final bytes = buffer.cast<Uint8>().asTypedList(blen);
+          return utf8.decode(bytes, allowMalformed: true);
+        } finally {
+          ffi.malloc.free(buffer);
+        }
+      } finally {
+        for (var i = 0; i < prompt.length; i++) {
+          ffi.malloc.free(messages[i].role);
+          ffi.malloc.free(messages[i].content);
+        }
+        ffi.malloc.free(messages);
       }
+    } else if (prompt is String) {
+      final messages = ffi.malloc<llama_chat_message>(1);
 
-      final blen = _lib.llama_chat_apply_template(nullptr, messages, prompt.length, false, nullptr, 0);
-      if(blen == 0) throw Exception('Não foi possível calcular a alocação do prompt formatado');
+      try {
+        messages[0].role = 'user'.toNativeUtf8().cast<Char>();
+        messages[0].content = prompt.toNativeUtf8().cast<Char>();
 
-      final buffer = ffi.malloc<Uint8>(blen);
+        final blen = _lib.llama_chat_apply_template(
+          nullptr,
+          messages,
+          1,
+          false,
+          nullptr,
+          0,
+        );
 
-      final res = _lib.llama_chat_apply_template(nullptr, messages, prompt.length, false, buffer.cast<Char>(), blen);
-      if(res > blen) throw Exception('Não foi possível fazer a alocação do prompt formatado');
-      if(res != blen) throw Exception('Erro durante a alocação');
-      if(res == 0) throw Exception('Um erro aconteceu na implementação do template');
+        if (blen <= 0) {
+          throw Exception('Falha ao calcular tamanho do prompt');
+        }
 
-      final formated = buffer.asTypedList(blen);
+        final buffer = ffi.malloc<Char>(blen);
 
-      for(var i=prompt.length - 1; i >= 0; i--){
-        ffi.malloc.free(messages[offset].content);
-        ffi.malloc.free(messages[offset].role);
+        try {
+          final res = _lib.llama_chat_apply_template(
+            nullptr,
+            messages,
+            1,
+            false,
+            buffer,
+            blen,
+          );
+
+          if (res != blen) {
+            throw Exception('Erro ao aplicar template');
+          }
+
+          final bytes = buffer.cast<Uint8>().asTypedList(blen);
+          return utf8.decode(bytes, allowMalformed: true);
+        } finally {
+          ffi.malloc.free(buffer);
+        }
+      } finally {
+        ffi.malloc.free(messages[0].role);
+        ffi.malloc.free(messages[0].content);
+        ffi.malloc.free(messages);
       }
-      ffi.malloc.free(messages);
-      ffi.malloc.free(buffer);
-
-      return utf8.decode(formated, allowMalformed: true);
-    } else if(prompt is String){
-      final llamaMessage = ffi.malloc<llama_chat_message>();
-      llamaMessage.ref.role = 'user'.toNativeUtf8().cast<Char>();
-      llamaMessage.ref.content = prompt.toNativeUtf8().cast<Char>();
-
-      final blen = 2 * prompt.length;
-      final buffer = ffi.malloc<Uint8>(blen);
-
-      final res = _lib.llama_chat_apply_template(nullptr, llamaMessage, 1, false, buffer.cast<Char>(), blen);
-      if(res > blen) throw Exception('Não foi possível fazer a alocação do prompt formatado');
-      if(res == 0) throw Exception('Um erro aconteceu na implementação do template');
-
-      final formated = buffer.asTypedList(blen);
-
-      ffi.malloc.free(llamaMessage.ref.content);
-      ffi.malloc.free(llamaMessage.ref.role);
-      ffi.malloc.free(llamaMessage);
-      ffi.malloc.free(buffer);
-
-      return utf8.decode(formated, allowMalformed: true);
     } else{
-      throw Exception('Formato de entrada inválido');
+      throw Exception('Formato não compatível');
     }
   }
 
