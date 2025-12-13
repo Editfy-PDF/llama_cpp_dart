@@ -36,7 +36,7 @@ Future<void> _llamaWorker(LlamaTask task) async {
 
     // Gera o texto
     final sw = Stopwatch()..start();
-    final result = await llama.generate(task.prompt);
+    final result = /*await*/ llama.formatWithTemplate([{'role': 'user', 'content': task.prompt}]);
     sw.stop();
     String debugString = "\t\t\ttime: ${sw.elapsedMilliseconds}ms | tokens: ${llama.tokenize(result).$1.length}";
     // Retorna o resultado
