@@ -596,6 +596,64 @@ class Llama {
     }
   }
 
+  String formatWithTemplate(dynamic prompt){
+    if(prompt is List<Map<String, String>> && prompt.isNotEmpty){
+      final size = sizeOf<llama_chat_message>();
+      final messages = ffi.malloc<llama_chat_message>(prompt.length * size);
+      var offset = 0;
+      for(final msg in prompt){
+        messages[offset] = ffi.malloc<llama_chat_message>().ref;
+        messages[offset].role = msg['role']!.toNativeUtf8().cast<Char>();
+        messages[offset].content = msg['content']!.toNativeUtf8().cast<Char>();    
+
+        offset += size;
+      }
+
+      final blen = _lib.llama_chat_apply_template(nullptr, messages, prompt.length, false, nullptr, 0);
+      if(blen == 0) throw Exception('Não foi possível calcular a alocação do prompt formatado');
+
+      final buffer = ffi.malloc<Uint8>(blen);
+
+      final res = _lib.llama_chat_apply_template(nullptr, messages, prompt.length, false, buffer.cast<Char>(), blen);
+      if(res > blen) throw Exception('Não foi possível fazer a alocação do prompt formatado');
+      if(res != blen) throw Exception('Erro durante a alocação');
+      if(res == 0) throw Exception('Um erro aconteceu na implementação do template');
+
+      final formated = buffer.asTypedList(blen);
+
+      for(var i=prompt.length - 1; i >= 0; i--){
+        ffi.malloc.free(messages[offset].content);
+        ffi.malloc.free(messages[offset].role);
+      }
+      ffi.malloc.free(messages);
+      ffi.malloc.free(buffer);
+
+      return utf8.decode(formated, allowMalformed: true);
+    } else if(prompt is String){
+      final llamaMessage = ffi.malloc<llama_chat_message>();
+      llamaMessage.ref.role = 'user'.toNativeUtf8().cast<Char>();
+      llamaMessage.ref.content = prompt.toNativeUtf8().cast<Char>();
+
+      final blen = 2 * prompt.length;
+      final buffer = ffi.malloc<Uint8>(blen);
+
+      final res = _lib.llama_chat_apply_template(nullptr, llamaMessage, 1, false, buffer.cast<Char>(), blen);
+      if(res > blen) throw Exception('Não foi possível fazer a alocação do prompt formatado');
+      if(res == 0) throw Exception('Um erro aconteceu na implementação do template');
+
+      final formated = buffer.asTypedList(blen);
+
+      ffi.malloc.free(llamaMessage.ref.content);
+      ffi.malloc.free(llamaMessage.ref.role);
+      ffi.malloc.free(llamaMessage);
+      ffi.malloc.free(buffer);
+
+      return utf8.decode(formated, allowMalformed: true);
+    } else{
+      throw Exception('Formato de entrada inválido');
+    }
+  }
+
   (List<int>, String) tokenize(String text){
     final textPtr = text.toNativeUtf8();
     final textLen = textPtr.length;
